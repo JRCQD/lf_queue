@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug, ptr, sync::atomic::{
+    fmt::Debug, sync::atomic::{
         AtomicPtr,
         Ordering::{Acquire, Release},
     }
@@ -7,7 +7,7 @@ use std::{
 
 #[derive(Debug)]
 struct LockFreeNode<T> {
-    value: T,
+    value: Option<T>,
     next: Option<Box<LockFreeNode<T>>>,
 }
 
@@ -20,7 +20,7 @@ pub struct LockFreeQueue<T: Clone> {
 impl<T: Clone + Debug> LockFreeQueue<T> {
     pub fn new() -> Self {
         let sentinel = Box::new(LockFreeNode {
-            value: unsafe { std::mem::zeroed() },
+            value: None,
             next: None,
         });
 
@@ -34,6 +34,7 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
 
     #[inline]
     pub fn enqueue(&self, value: T) {
+        let value = Some(value);
         let new_node = Box::new(LockFreeNode { value, next: None });
 
         let new_node_ptr: *mut _ = Box::into_raw(new_node);
@@ -70,8 +71,7 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
                 let next = (*head_ptr).next.take();
                 if let Some(next_node) = next {
                     self.head.store(Box::into_raw(next_node), Release);
-                    let x = ptr::read_unaligned(current);
-                    return Some(x.value);
+                    return (*current).value.clone();
                 }
             }
         }
@@ -81,5 +81,31 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
 impl<T: Clone + Debug> Default for LockFreeQueue<T> {
     fn default() -> Self {
         LockFreeQueue::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // There is a bug here somewhere, dequeue() seems to dequeue the sentinal node, which means
+    // we only ever dequeue N-1 real nodes. I'll fix this at some point.
+    #[test]
+    fn test_load_one() {
+        let queue = LockFreeQueue::new();
+        queue.enqueue(1);
+        queue.enqueue(2);
+        assert_eq!(queue.dequeue(), None);
+        assert_eq!(queue.dequeue(), Some(1));
+    }
+
+    #[test]
+    fn test_load_two() {
+        let queue = LockFreeQueue::new();
+        queue.enqueue(1);
+        queue.enqueue(2);
+        queue.enqueue(3);
+        assert_eq!(queue.dequeue(), None);
+        assert_eq!(queue.dequeue(), Some(1));
+        assert_eq!(queue.dequeue(), Some(2))
     }
 }

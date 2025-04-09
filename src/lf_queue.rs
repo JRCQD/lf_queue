@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct LockFreeNode<T: Clone> {
     value: Option<T>,
     next: Option<Box<LockFreeNode<T>>>,

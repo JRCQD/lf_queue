@@ -1,12 +1,13 @@
 use std::{
-    fmt::Debug, sync::atomic::{
+    fmt::Debug,
+    sync::atomic::{
         AtomicPtr,
         Ordering::{Acquire, Release},
-    }
+    },
 };
 
-#[derive(Debug)]
-struct LockFreeNode<T> {
+#[derive(Debug, Clone)]
+struct LockFreeNode<T: Clone> {
     value: Option<T>,
     next: Option<Box<LockFreeNode<T>>>,
 }
@@ -70,8 +71,13 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
                 let current = head_ptr;
                 let next = (*head_ptr).next.take();
                 if let Some(next_node) = next {
-                    self.head.store(Box::into_raw(next_node), Release);
-                    return (*current).value.clone();
+                    if self
+                        .head
+                        .compare_exchange(current, Box::into_raw(next_node), Release, Acquire)
+                        .is_ok()
+                    {
+                        return (*current).value.clone();
+                    }
                 }
             }
         }

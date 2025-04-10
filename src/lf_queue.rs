@@ -62,26 +62,25 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
     pub fn dequeue(&self) -> Option<T> {
         loop {
             let head_ptr = self.head.load(Acquire);
-            let tail_ptr = self.tail.load(Acquire);
-
-            if head_ptr == tail_ptr {
-                return None;
-            }
+    
             unsafe {
-                let current = head_ptr;
-                let next = (*head_ptr).next.take();
-                if let Some(next_node) = next {
-                    if self
-                        .head
-                        .compare_exchange(current, Box::into_raw(next_node), Release, Acquire)
-                        .is_ok()
-                    {
-                        return (*current).value.clone();
-                    }
+                let next = (*head_ptr).next.as_ref()?;
+                // This is ugly as sin
+                let next_ptr = next.as_ref() as *const _ as *mut _;
+    
+                if self
+                    .head
+                    .compare_exchange(head_ptr, next_ptr, Release, Acquire)
+                    .is_ok()
+                {
+                    let value = next.value.clone();
+    
+                    return value;
                 }
             }
         }
     }
+    
 }
 
 impl<T: Clone + Debug> Default for LockFreeQueue<T> {
@@ -100,7 +99,6 @@ mod tests {
         let queue = LockFreeQueue::new();
         queue.enqueue(1);
         queue.enqueue(2);
-        assert_eq!(queue.dequeue(), None);
         assert_eq!(queue.dequeue(), Some(1));
     }
 
@@ -109,9 +107,7 @@ mod tests {
         let queue = LockFreeQueue::new();
         queue.enqueue(1);
         queue.enqueue(2);
-        queue.enqueue(3);
-        assert_eq!(queue.dequeue(), None);
         assert_eq!(queue.dequeue(), Some(1));
-        assert_eq!(queue.dequeue(), Some(2))
+        assert_eq!(queue.dequeue(), Some(2));
     }
 }

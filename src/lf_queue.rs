@@ -73,9 +73,7 @@ impl<T: Clone + Debug> LockFreeQueue<T> {
                     .compare_exchange(head_ptr, next_ptr, Release, Acquire)
                     .is_ok()
                 {
-                    let value = next.value.clone();
-    
-                    return value;
+                    return next.value.clone();
                 }
             }
         }
